@@ -1,13 +1,12 @@
 import heapq
 import math
 import random
-import matplotlib.pyplot as plt
-import itertools, scipy.spatial
-from matplotlib.collections import LineCollection
+import time
+import scipy.spatial
 from collections import defaultdict, namedtuple
 
 # ----------------------------------
-# Simple data structures
+# Data structures
 # ----------------------------------
 
 # edge is a named tuple with two fields: to (destination vertex ID) and weight (edge weight)
@@ -39,15 +38,16 @@ class Graph:
 # Dijkstra
 # ----------------------------------
 def dijkstra(g: Graph, post_offices):
+    # set up distance and nearest office dictionaries
     dist = {v: math.inf for v in g.xy}
     nearest = {v: None for v in g.xy}
 
     # generate one distinct color per post office
     # using a nice pastel color palette
     color_palette = {}
-    rng = random.Random(42)         # always use 42 :)
+    rng = random.Random(15)         # my lucky number
     for p in post_offices:
-        color_palette[p] = (rng.random()*0.5 + 0.4,   # avoid dark colors
+        color_palette[p] = (rng.random()*0.5 + 0.4,   # no dark colors
                             rng.random()*0.5 + 0.4,
                             rng.random()*0.5 + 0.4)
 
@@ -85,59 +85,86 @@ def dijkstra(g: Graph, post_offices):
 # Tests
 # ----------------------------------
 if __name__ == "__main__":
-    # build a graph: 100 random points in the unit square,
-    # connect each vertex to its 6 nearest neighbors
-    N = 100
-    k = 6
-    pts = [(random.random(), random.random()) for _ in range(N)]
+    # build a graph: N random points in the unit square,
+    # connect each vertex to its k nearest neighbors
+    # p% of the vertices are post offices
+    n = 1000
+    k = 10
+    p = 5
+    time_alg = True      # set to True for testing
+    vis = True           # set to True for visualization
+
+    random.seed(15)
+    pts = [(random.random(), random.random()) for _ in range(n)]
 
     g = Graph()
     for vid, (x, y) in enumerate(pts):
         g.add_vertex(vid, x, y)
 
     # k‑nearest‑neighbor edges using a KD‑tree
-    # this is much faster than brute force (O(N^2) vs O(N log N))
+    # using the scipy.spatial KDTree implementation
     tree = scipy.spatial.KDTree(pts)
     for vid, (x, y) in enumerate(pts):
-        _, idxs = tree.query((x, y), k + 1)   # k+1 because the first is itself
+        _, idxs = tree.query((x, y), k + 1)   # k+1 because 1st closest is itself
         for v in idxs[1:]:
             g.add_edge(vid, int(v))
 
-    # choose 5% of vertices as post offices
-    offices = random.sample(range(N), max(1, N * 5 // 100))
+    # choose p% of vertices as post offices
+    offices = random.sample(range(n), max(1, n * p // 100))
 
+    # time dijkstra's algorithm 5 times and average the time
+    if time_alg:
+        times = []
+        for _ in range(5):
+            start_time = time.time()
+            dijkstra(g, offices)
+            end_time = time.time()
+            times.append(end_time - start_time)
+        avg_time = sum(times) / len(times)
+        print(f"n: {n}, k: {k}, p: {p}, avg_time: {avg_time:.4f}s")
+    
+    # run dijkstra's algorithm once more to get the distances and colors
+    # (this is the final version, so we don't need to time it)
     dist, nearest, color = dijkstra(g, offices)
+    
 
     # -----------------------------------
-    # visualization
-    xs, ys = zip(*pts)
-    cs = [color[i] for i in range(N)]
+    # visualization with matplotlib (comment out for final version)
+    # -----------------------------------
+    if vis:
+        import matplotlib.pyplot as plt
+        from matplotlib.collections import LineCollection
+        xs, ys = zip(*pts)
+        cs = [color[i] for i in range(n)]
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(8, 8))
 
-    # draw edges
-    lines = []
-    for u in range(N):
-        for edge in g.adj[u]:
-            v = edge.to
-            if u < v:       # avoid drawing both directions
-                lines.append([pts[u], pts[v]])
-    lc = LineCollection(lines, colors='lightgray', linewidths=0.7, alpha=0.5)
-    ax.add_collection(lc)
+        # draw edges
+        lines = []
+        for u in range(n):
+            for edge in g.adj[u]:
+                v = edge.to
+                if u < v:       # avoid drawing both directions
+                    lines.append([pts[u], pts[v]])
+        lc = LineCollection(lines, colors='lightgray', linewidths=0.7, alpha=0.5)
+        ax.add_collection(lc)
 
-    # draw nodes
-    sc = ax.scatter(xs, ys, c=cs, s=40, edgecolors='k', linewidths=0.7, zorder=2)
+        # draw nodes
+        sc = ax.scatter(xs, ys, c=cs, s=40, edgecolors='k', linewidths=0.7, zorder=2)
 
-    # draw post offices
-    office_x = [pts[i][0] for i in offices]
-    office_y = [pts[i][1] for i in offices]
-    ax.scatter(office_x, office_y, c='none', edgecolors='black', marker='^', s=180, linewidths=2, label='Post Office', zorder=3)
+        # draw post offices
+        office_x = [pts[i][0] for i in offices]
+        office_y = [pts[i][1] for i in offices]
+        ax.scatter(office_x, office_y, c='none', edgecolors='black', marker='^', s=180, linewidths=2, label='Post Office', zorder=3)
 
-    ax.set_title("Post Office Map")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.legend()
-    ax.grid(True, linestyle=':', alpha=0.5)
-    ax.set_aspect('equal')
-    plt.tight_layout()
-    plt.show()
+        ax.set_title("Post Office Map")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.legend()
+        ax.grid(True, linestyle=':', alpha=0.5)
+        ax.set_aspect('equal')
+        plt.tight_layout()
+        plt.show()
+
+        # save the figure
+        fig.savefig("post_office_map.png", dpi=300, bbox_inches='tight')
